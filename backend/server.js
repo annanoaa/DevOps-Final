@@ -45,21 +45,18 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
+// --- MIDDLEWARE SETUP ---
+
 // Security middleware
 app.use(helmet());
 app.use(cors());
 app.use(compression());
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use(limiter);
-
 // Logging
 app.use(morgan('combined'));
+
+
+// --- INTERNAL MONITORING ENDPOINTS (No Rate Limit) ---
 
 // Prometheus metrics endpoint
 app.get('/metrics', async (req, res) => {
@@ -73,8 +70,8 @@ app.get('/metrics', async (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'healthy', 
+  res.json({
+    status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
@@ -86,21 +83,33 @@ app.get('/health/db', async (req, res) => {
     const client = await pool.connect();
     const result = await client.query('SELECT NOW()');
     client.release();
-    res.json({ 
-      status: 'healthy', 
+    res.json({
+      status: 'healthy',
       database: 'connected',
       timestamp: result.rows[0].now
     });
   } catch (err) {
-    res.status(500).json({ 
-      status: 'unhealthy', 
+    res.status(500).json({
+      status: 'unhealthy',
       database: 'disconnected',
-      error: err.message 
+      error: err.message
     });
   }
 });
 
-// API Routes
+
+// --- APPLY RATE LIMITER MIDDLEWARE ---
+// This will apply to all routes defined AFTER this point.
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.'
+});
+app.use('/api', limiter); // Best practice: only apply to API routes
+
+
+// --- PUBLIC API ROUTES (Rate Limited) ---
+
 app.get('/api/status', (req, res) => {
   res.json({
     service: 'devops-backend',
@@ -116,13 +125,13 @@ app.get('/api/users', async (req, res) => {
     const client = await pool.connect();
     const result = await client.query('SELECT id, name, email, created_at FROM users LIMIT 10');
     client.release();
-    
+
     const duration = Date.now() - start;
     httpRequestDurationMicroseconds
       .labels('GET', '/api/users', '200')
       .observe(duration / 1000);
     httpRequestsTotal.labels('GET', '/api/users', '200').inc();
-    
+
     res.json(result.rows);
   } catch (err) {
     const duration = Date.now() - start;
@@ -130,7 +139,7 @@ app.get('/api/users', async (req, res) => {
       .labels('GET', '/api/users', '500')
       .observe(duration / 1000);
     httpRequestsTotal.labels('GET', '/api/users', '500').inc();
-    
+
     res.status(500).json({ error: err.message });
   }
 });
@@ -145,8 +154,8 @@ app.get('/api/load-test', (req, res) => {
       .labels('GET', '/api/load-test', '200')
       .observe(duration / 1000);
     httpRequestsTotal.labels('GET', '/api/load-test', '200').inc();
-    
-    res.json({ 
+
+    res.json({
       message: 'Load test completed',
       duration: duration
     });
@@ -158,6 +167,9 @@ app.get('/api/error', (req, res) => {
   httpRequestsTotal.labels('GET', '/api/error', '500').inc();
   res.status(500).json({ error: 'Simulated error for incident testing' });
 });
+
+
+// --- FINAL MIDDLEWARE ---
 
 // Connection tracking
 app.use((req, res, next) => {
@@ -190,4 +202,4 @@ app.listen(PORT, () => {
   console.log(`Backend server running on port ${PORT}`);
   console.log(`Metrics available at http://localhost:${PORT}/metrics`);
   console.log(`Health check at http://localhost:${PORT}/health`);
-}); 
+});
