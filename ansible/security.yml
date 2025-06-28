@@ -1,0 +1,73 @@
+---
+- name: DevOps Final Project Security Automation
+  hosts: local
+  become: false
+  gather_facts: true
+  
+  vars:
+    project_name: "devops_final"
+    reports_dir: "{{ project_root }}/reports"
+    
+  tasks:
+    - name: Check if Trivy is installed
+      command: trivy --version
+      register: trivy_check
+      failed_when: false
+      
+    - name: Install Trivy if not present
+      block:
+        - name: Install Trivy on macOS
+          command: brew install trivy
+          when: ansible_os_family == "Darwin"
+          
+        - name: Install Trivy on Linux
+          shell: |
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          when: ansible_os_family == "RedHat" or ansible_os_family == "Debian"
+          
+        - name: Install Trivy on Windows
+          win_chocolatey:
+            name: trivy
+          when: ansible_os_family == "Windows"
+      when: trivy_check.rc != 0
+      
+    - name: Create reports directory
+      file:
+        path: "{{ reports_dir }}"
+        state: directory
+        mode: '0755'
+        
+    - name: Run security scan
+      command: "{{ project_root }}/scripts/security-scan.sh"
+      register: security_scan_result
+      
+    - name: Display security scan results
+      debug:
+        msg: |
+          🔒 Security Scan Results
+          ========================
+          {{ security_scan_result.stdout }}
+          
+    - name: Check for critical vulnerabilities
+      fail:
+        msg: "Critical vulnerabilities detected! Please review the security reports."
+      when: security_scan_result.rc != 0
+      
+    - name: Generate security compliance report
+      template:
+        src: security-report.md.j2
+        dest: "{{ reports_dir }}/compliance-report.md"
+        mode: '0644'
+        
+    - name: Display compliance report location
+      debug:
+        msg: |
+          📋 Security Compliance Report
+          =============================
+          Report generated: {{ reports_dir }}/compliance-report.md
+          
+          Next steps:
+          1. Review the security scan results
+          2. Address any critical/high vulnerabilities
+          3. Update base images if needed
+          4. Re-run scan after fixes 

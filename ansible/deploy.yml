@@ -1,0 +1,94 @@
+---
+- name: DevOps Final Project Deployment
+  hosts: local
+  become: false
+  gather_facts: true
+  
+  vars:
+    project_name: "devops_final"
+    docker_compose_file: "{{ project_root }}/docker-compose.yml"
+    environment_file: "{{ project_root }}/.env"
+    
+  tasks:
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_check
+      failed_when: false
+      
+    - name: Fail if Docker is not installed
+      fail:
+        msg: "Docker is not installed. Please install Docker first."
+      when: docker_check.rc != 0
+      
+    - name: Check if Docker Compose is installed
+      command: docker-compose --version
+      register: compose_check
+      failed_when: false
+      
+    - name: Fail if Docker Compose is not installed
+      fail:
+        msg: "Docker Compose is not installed. Please install Docker Compose first."
+      when: compose_check.rc != 0
+      
+    - name: Create environment file if it doesn't exist
+      copy:
+        src: "{{ project_root }}/env.example"
+        dest: "{{ environment_file }}"
+        force: false
+      when: not ansible_check_mode
+      
+    - name: Display deployment information
+      debug:
+        msg: |
+          🚀 Starting DevOps Final Project Deployment
+          ===========================================
+          Project: {{ project_name }}
+          Docker Compose: {{ docker_compose_file }}
+          Environment: {{ environment_file }}
+          
+    - name: Stop existing containers
+      docker_compose:
+        project_src: "{{ project_root }}"
+        state: absent
+      ignore_errors: true
+      
+    - name: Build and start services
+      docker_compose:
+        project_src: "{{ project_root }}"
+        build: true
+        state: present
+        pull: true
+        
+    - name: Wait for services to be healthy
+      wait_for:
+        host: localhost
+        port: "{{ item }}"
+        delay: 10
+        timeout: 300
+      loop:
+        - 3000  # Frontend
+        - 5000  # Backend
+        - 9090  # Prometheus
+        - 3001  # Grafana
+        
+    - name: Display service URLs
+      debug:
+        msg: |
+          🎉 Deployment completed successfully!
+          ====================================
+          
+          Services available at:
+          - Frontend: http://localhost:3000
+          - Backend API: http://localhost:5000
+          - Prometheus: http://localhost:9090
+          - Grafana: http://localhost:3001 (admin/admin)
+          - cAdvisor: http://localhost:8080
+          
+          Health checks:
+          - Backend health: http://localhost:5000/health
+          - Backend metrics: http://localhost:5000/metrics
+          
+          Next steps:
+          1. Open http://localhost:3000 in your browser
+          2. Run security scan: ./scripts/security-scan.sh
+          3. Check monitoring dashboards 
