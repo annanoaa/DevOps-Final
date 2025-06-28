@@ -170,13 +170,7 @@ ansible-playbook -i ansible/inventory.yml ansible/deploy.yml
 
 ## Screenshots
 
-Screenshots of the application, monitoring dashboards, and incident simulations are available in the `screenshots/` directory. Example files:
-- `application .png`
-- `grafana dashboard.png`
-- `incident simulation.png`
-- `prometheus.png`
-- `Security Scan Summary Report.png`
-
+Screenshots of the application, monitoring dashboards, and incident simulations are available in the `screenshots/` directory. 
 ---
 
 ## Documentation
