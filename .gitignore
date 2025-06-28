@@ -108,6 +108,7 @@ reports/
 *.json
 !package.json
 !package-lock.json
+!reports/security-summary.md
 
 # Database
 *.db
