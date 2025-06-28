@@ -1,4 +1,4 @@
-version: '3.8'
+# This version is corrected to run on Docker Desktop (macOS/Windows)
 
 services:
   # PostgreSQL Database
@@ -21,6 +21,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
   # Backend API Service
   backend:
@@ -59,21 +60,22 @@ services:
       target: production
     container_name: devops_frontend
     ports:
-      - "3000:3000"
+      - "3000:80" # Standard Nginx serves on port 80 internally
     depends_on:
       - backend
     networks:
       - devops_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      # Healthcheck should target the internal port 80
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
       interval: 30s
       timeout: 10s
       retries: 3
 
   # Prometheus Monitoring
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.0 # Pinned version
     container_name: devops_prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -93,7 +95,7 @@ services:
 
   # Grafana Dashboard
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.0.0 # Pinned version
     container_name: devops_grafana
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
@@ -102,9 +104,8 @@ services:
     ports:
       - "3001:3000"
     volumes:
-      - grafana_data:/var/lib/grafana
+      - ./grafana-data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
     networks:
       - devops_network
     restart: unless-stopped
@@ -113,41 +114,35 @@ services:
 
   # cAdvisor for container metrics
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: gcr.io/cadvisor/cadvisor:v0.49.1 # Pinned version
     container_name: devops_cadvisor
     privileged: true
     ports:
       - "8080:8080"
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
+      # Corrected volume mounts for Docker Desktop
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
     networks:
       - devops_network
     restart: unless-stopped
 
-  # Node Exporter for system metrics
-  node-exporter:
-    image: prom/node-exporter:latest
+  node-exporter: # <--- CORRECT INDENTATION (2 spaces)
+    image: prom/node-exporter:v1.8.1 # Pinned version
     container_name: devops_node_exporter
-    command:
-      - '--path.rootfs=/host'
-    network_mode: host
-    pid: host
+    ports:
+      - "9100:9100"
+    networks:
+      - devops_network
     restart: unless-stopped
-    volumes:
-      - '/:/host:ro,rslave'
 
+    
 volumes:
   postgres_data:
     driver: local
   prometheus_data:
     driver: local
-  grafana_data:
-    driver: local
 
 networks:
   devops_network:
-    driver: bridge 
+    driver: bridge
